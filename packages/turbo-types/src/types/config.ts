@@ -80,11 +80,11 @@ export interface Pipeline {
    * Note: turbo automatically logs stderr/stdout to .turbo/run-<task>.log. This file is
    * always treated as a cacheable artifact and never needs to be specified.
    *
-   * Passing an empty array can be used to tell turbo that a task is a side-effect and
+   * Omitting this key or passing an empty array can be used to tell turbo that a task is a side-effect and
    * thus doesn't emit any filesystem artifacts (e.g. like a linter), but you still want
    * to cache its logs (and treat them like an artifact).
    *
-   * @default ["dist/**", "build/**"]
+   * @default []
    */
   outputs?: string[];
 
