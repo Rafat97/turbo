@@ -25,7 +25,7 @@ Examples of **incorrect** code for this rule:
       "outputs": []
     },
     "dev": {
-      "cache": false
+      "persistent": true
     }
   }
 }
@@ -45,7 +45,7 @@ Examples of **correct** code for this rule:
       "outputs": []
     },
     "dev": {
-      "cache": false
+      "persistent": true
     }
   }
 }
@@ -62,7 +62,7 @@ Examples of **correct** code for this rule:
       "outputs": []
     },
     "dev": {
-      "cache": false
+      "persistent": true
     }
   }
 }

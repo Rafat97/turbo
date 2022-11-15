@@ -113,29 +113,52 @@ in the `src/` and `test/` subdirectories has changed since the last execution.
 
 ## Turn off caching
 
-Sometimes you really don't want to write the cache output (e.g. when you're using [`next dev`](https://nextjs.org/docs/api-reference/cli#development) or `react-scripts start` for live reloading). To disable cache writes, append `--no-cache` to any command:
+Sometimes, you _never_ want to cache a certain task. This could be a task you always want to run, like a database migration. Or, it could be a task that never completes, like a [`dev` task](/repo/docs/handbook/dev).
 
-```shell
-# Run `dev` npm script in all workspaces in parallel,
-# but don't cache the output
-turbo run dev --no-cache
-```
+### Persistent tasks
 
-Note that `--no-cache` disables cache writes but does not disable cache reads. If you want to disable cache reads, use the `--force` flag.
-
-You can also disable caching on specific tasks by setting the [`pipeline.<task>.cache`](/repo/docs/reference/configuration#cache) configuration to `false`:
+For tasks that don't complete, like `dev` tasks or `--watch` tasks, we recommend using the `persistent` flag.
 
 ```json
 {
-  "$schema": "https://turbo.build/schema.json",
   "pipeline": {
     "dev": {
-      "cache": false,
       "persistent": true
     }
   }
 }
 ```
+
+Flagging `persistent` as `true` marks this task as one that will never complete. This disables caching for that task, and also provides better introspection for Turbo to help you prevent infinite loops.
+
+### Disabling caching
+
+You can disable caching on specific tasks by setting the [`cache`](/repo/docs/reference/configuration#cache) flag to `false`:
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "db:migrate": {
+      "cache": false
+    }
+  }
+}
+```
+
+This ensures that `db:migrate` will always be run, and its results will never be cached.
+
+#### Via the CLI
+
+To disable cache writes for the entire process, append `--no-cache` to any command:
+
+```shell
+# Run `dev` npm script in all workspaces in parallel,
+# but don't cache the output
+turbo run db:migrate --no-cache
+```
+
+Note that `--no-cache` disables cache writes but does not disable cache reads. If you want to disable cache reads, use the `--force` flag.
 
 ## Alter Caching Based on File Changes
 

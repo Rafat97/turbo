@@ -72,7 +72,6 @@ Each key in the `pipeline` object is the name of a task that can be executed by 
       "outputMode": "full"
     },
     "dev": {
-      "cache": false,
       "persistent": true
     }
   }
@@ -200,7 +199,6 @@ Passing an empty array can be used to tell `turbo` that a task is a side-effect 
     "dev": {
       // Never cache anything (including logs) emitted by a
       // `dev` task
-      "cache": false,
       "persistent": true
     }
   }
@@ -227,7 +225,6 @@ Defaults to `true`. Whether or not to cache the task [`outputs`](#outputs). Sett
       "dependsOn": ["build"]
     },
     "dev": {
-      "cache": false,
       "persistent": true
     }
   }

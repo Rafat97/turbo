@@ -16,7 +16,6 @@
       "outputs": []
     },
     "dev": {
-      "cache": false,
       "persistent": true
     },
     "generate": {

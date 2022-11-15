@@ -183,7 +183,7 @@ So, let's make sure that `db:generate` is always run _before_ the user runs `dev
   "pipeline": {
     "dev": {
       "dependsOn": ["^db:generate"],
-      "cache": false
+      "persistent": true
     },
     "build": {
       "dependsOn": ["^db:generate"],
