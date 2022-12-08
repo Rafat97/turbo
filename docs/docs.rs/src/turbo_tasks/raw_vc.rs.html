@@ -534,13 +534,8 @@
 <span id="534">534</span>
 <span id="535">535</span>
 <span id="536">536</span>
-<span id="537">537</span>
-<span id="538">538</span>
-<span id="539">539</span>
-<span id="540">540</span>
 </pre><pre class="rust"><code><span class="kw">use </span>std::{
     any::Any,
-    collections::HashSet,
     fmt::{Debug, Display},
     future::{Future, IntoFuture},
     hash::Hash,
@@ -551,6 +546,7 @@
 };
 
 <span class="kw">use </span>anyhow::{anyhow, <span class="prelude-ty">Result</span>};
+<span class="kw">use </span>auto_hash_map::AutoSet;
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 <span class="kw">use </span>thiserror::Error;
 
@@ -558,15 +554,14 @@
     backend::CellContent,
     event::EventListener,
     manager::{
-        find_cell_by_key, find_cell_by_type, read_task_cell, read_task_cell_untracked,
-        read_task_output, read_task_output_untracked, CurrentCellRef, TurboTasksApi,
+        find_cell_by_type, read_task_cell, read_task_cell_untracked, read_task_output,
+        read_task_output_untracked, CurrentCellRef, TurboTasksApi,
     },
     primitives::{RawVcSet, RawVcSetVc},
-    registry::get_value_type,
+    registry::{<span class="self">self</span>, get_value_type},
     turbo_tasks,
     value_type::ValueTraitVc,
-    CollectiblesSource, ReadRef, SharedReference, TaskId, TraitTypeId, Typed, TypedForInput,
-    ValueTypeId,
+    CollectiblesSource, ReadRef, SharedReference, TaskId, TraitTypeId, ValueTypeId,
 };
 
 <span class="attr">#[derive(Error, Debug)]
@@ -582,9 +577,26 @@
 }
 
 <span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+</span><span class="kw">pub struct </span>CellId {
+    <span class="kw">pub </span>type_id: ValueTypeId,
+    <span class="kw">pub </span>index: u32,
+}
+
+<span class="kw">impl </span>Display <span class="kw">for </span>CellId {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">&#39;_</span>&gt;) -&gt; std::fmt::Result {
+        <span class="macro">write!</span>(
+            f,
+            <span class="string">&quot;{}#{}&quot;</span>,
+            registry::get_value_type(<span class="self">self</span>.type_id).name,
+            <span class="self">self</span>.index
+        )
+    }
+}
+
+<span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 </span><span class="kw">pub enum </span>RawVc {
     TaskOutput(TaskId),
-    TaskCell(TaskId, usize),
+    TaskCell(TaskId, CellId),
 }
 
 <span class="kw">impl </span>RawVc {
@@ -848,26 +860,6 @@
         <span class="self">self</span>.cell_local_internal(find_cell_by_type).<span class="kw">await
     </span>}
 
-    <span class="doccomment">/// Like [RawVc::cell_local], but allows to specify a key for selecting the
-    /// cell.
-    </span><span class="kw">pub async fn </span>keyed_cell_local&lt;
-        K: std::fmt::Debug
-            + std::cmp::Eq
-            + std::cmp::Ord
-            + std::hash::Hash
-            + Typed
-            + TypedForInput
-            + Send
-            + Sync
-            + <span class="lifetime">&#39;static</span>,
-    &gt;(
-        <span class="self">self</span>,
-        key: K,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;RawVc&gt; {
-        <span class="self">self</span>.cell_local_internal(|ty| find_cell_by_key(ty, key))
-            .<span class="kw">await
-    </span>}
-
     <span class="kw">pub fn </span>get_task_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; TaskId {
         <span class="kw">match </span><span class="self">self </span>{
             RawVc::TaskOutput(t) | RawVc::TaskCell(t, <span class="kw">_</span>) =&gt; <span class="kw-2">*</span>t,
@@ -1050,13 +1042,13 @@
 
 <span class="kw">pub struct </span>CollectiblesFuture&lt;T: ValueTraitVc&gt; {
     turbo_tasks: Arc&lt;<span class="kw">dyn </span>TurboTasksApi&gt;,
-    inner: ReadRawVcFuture&lt;RawVcSet, HashSet&lt;RawVc&gt;&gt;,
+    inner: ReadRawVcFuture&lt;RawVcSet, AutoSet&lt;RawVc&gt;&gt;,
     take: bool,
     phantom: PhantomData&lt;<span class="kw">fn</span>() -&gt; T&gt;,
 }
 
 <span class="kw">impl</span>&lt;T: ValueTraitVc&gt; Future <span class="kw">for </span>CollectiblesFuture&lt;T&gt; {
-    <span class="kw">type </span>Output = <span class="prelude-ty">Result</span>&lt;HashSet&lt;T&gt;&gt;;
+    <span class="kw">type </span>Output = <span class="prelude-ty">Result</span>&lt;AutoSet&lt;T&gt;&gt;;
 
     <span class="kw">fn </span>poll(<span class="self">self</span>: Pin&lt;<span class="kw-2">&amp;mut </span><span class="self">Self</span>&gt;, cx: <span class="kw-2">&amp;mut </span>std::task::Context&lt;<span class="lifetime">&#39;_</span>&gt;) -&gt; Poll&lt;<span class="self">Self</span>::Output&gt; {
         <span class="comment">// SAFETY: we are not moving `this`

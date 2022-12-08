@@ -1158,9 +1158,6 @@
 <span id="1158">1158</span>
 <span id="1159">1159</span>
 <span id="1160">1160</span>
-<span id="1161">1161</span>
-<span id="1162">1162</span>
-<span id="1163">1163</span>
 </pre><pre class="rust"><code><span class="kw">use </span>std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
@@ -1190,6 +1187,7 @@
     },
     origin::ResolveOriginVc,
     parse::{Request, RequestVc},
+    pattern::QueryMapVc,
 };
 <span class="kw">use crate</span>::{
     asset::{AssetVc, AssetsVc},
@@ -1812,9 +1810,11 @@
                 options,
             )
         }
-        Request::Module { module, path } =&gt; {
-            resolve_module_request(context, options, options_value, module, path).<span class="kw">await</span><span class="question-mark">?
-        </span>}
+        Request::Module {
+            module,
+            path,
+            query,
+        } =&gt; resolve_module_request(context, options, options_value, module, path, query).<span class="kw">await</span><span class="question-mark">?</span>,
         Request::ServerRelative { path } =&gt; {
             <span class="kw">let </span><span class="kw-2">mut </span>new_pat = path.clone();
             new_pat.push_front(<span class="string">&quot;.&quot;</span>.to_string().into());
@@ -1859,20 +1859,13 @@
             ResolveResult::unresolveable().into()
         }
         Request::Uri {
-            protocol: <span class="kw">_</span>,
-            remainder: <span class="kw">_</span>,
-        } =&gt; {
-            <span class="kw">let </span>issue: ResolvingIssueVc = ResolvingIssue {
-                request_type: <span class="string">&quot;URI imports: not implemented yet&quot;</span>.to_string(),
-                request,
-                context,
-                resolve_options: options,
-                error_message: <span class="prelude-val">Some</span>(<span class="string">&quot;URI imports are not implemented yet&quot;</span>.to_string()),
-            }
-            .into();
-            issue.as_issue().emit();
-            ResolveResult::unresolveable().into()
-        }
+            protocol,
+            remainder,
+        } =&gt; ResolveResult::Special(
+            SpecialType::OriginalReferenceTypeExternal(<span class="macro">format!</span>(<span class="string">&quot;{}{}&quot;</span>, protocol, remainder)),
+            Vec::new(),
+        )
+        .into(),
         Request::Unknown { path } =&gt; {
             <span class="kw">let </span>issue: ResolvingIssueVc = ResolvingIssue {
                 request_type: <span class="macro">format!</span>(<span class="string">&quot;unknown import: `{}`&quot;</span>, path),
@@ -1973,6 +1966,7 @@
     options_value: <span class="kw-2">&amp;</span>ResolveOptions,
     module: <span class="kw-2">&amp;</span>str,
     path: <span class="kw-2">&amp;</span>Pattern,
+    <span class="kw">_</span>: <span class="kw-2">&amp;</span>QueryMapVc,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;ResolveResultVc&gt; {
     <span class="kw">let </span>result = find_package(
         context,
@@ -2191,7 +2185,7 @@
         }
     }
     <span class="kw">if let </span><span class="prelude-val">Some</span>(resolved_map) = resolved_map {
-        <span class="kw">let </span>result = resolved_map.lookup(<span class="kw-2">*</span>path).<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">let </span>result = resolved_map.lookup(<span class="kw-2">*</span>path, original_request).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="kw">if </span>!<span class="macro">matches!</span>(<span class="kw-2">&amp;*</span>result, ImportMapResult::NoEntry) {
             <span class="kw">return </span>resolve_import_map_result(
                 <span class="kw-2">&amp;</span>result,

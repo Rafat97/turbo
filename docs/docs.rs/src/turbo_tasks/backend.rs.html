@@ -383,49 +383,25 @@
 <span id="383">383</span>
 <span id="384">384</span>
 <span id="385">385</span>
-<span id="386">386</span>
-<span id="387">387</span>
-<span id="388">388</span>
-<span id="389">389</span>
-<span id="390">390</span>
-<span id="391">391</span>
-<span id="392">392</span>
-<span id="393">393</span>
-<span id="394">394</span>
-<span id="395">395</span>
-<span id="396">396</span>
-<span id="397">397</span>
-<span id="398">398</span>
-<span id="399">399</span>
-<span id="400">400</span>
-<span id="401">401</span>
-<span id="402">402</span>
-<span id="403">403</span>
-<span id="404">404</span>
-<span id="405">405</span>
-<span id="406">406</span>
-<span id="407">407</span>
 </pre><pre class="rust"><code><span class="kw">use </span>std::{
     any::Any,
     borrow::Cow,
-    collections::{HashMap, HashSet},
     fmt::{Debug, Display},
     future::Future,
     pin::Pin,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 <span class="kw">use </span>anyhow::{anyhow, <span class="prelude-ty">Result</span>};
+<span class="kw">use </span>auto_hash_map::AutoSet;
 <span class="kw">use </span>serde::{Deserialize, Serialize};
 
 <span class="kw">pub use </span><span class="kw">crate</span>::id::BackendJobId;
 <span class="kw">use crate</span>::{
-    event::EventListener,
-    manager::TurboTasksBackendApi,
-    registry,
-    task_input::{SharedReference, SharedValue},
-    FunctionId, RawVc, ReadRef, TaskId, TaskIdProvider, TaskInput, TraitTypeId, ValueTypeId,
+    event::EventListener, manager::TurboTasksBackendApi, raw_vc::CellId, registry,
+    task_input::SharedReference, FunctionId, RawVc, ReadRef, TaskId, TaskIdProvider, TaskInput,
+    TraitTypeId,
 };
 
 <span class="doccomment">/// Different Task types
@@ -439,12 +415,15 @@
     </span>Persistent(PersistentTaskType),
 }
 
+<span class="kw">type </span>TransientTaskRoot =
+    Box&lt;<span class="kw">dyn </span>Fn() -&gt; Pin&lt;Box&lt;<span class="kw">dyn </span>Future&lt;Output = <span class="prelude-ty">Result</span>&lt;RawVc&gt;&gt; + Send&gt;&gt; + Send + Sync&gt;;
+
 <span class="kw">pub enum </span>TransientTaskType {
     <span class="doccomment">/// A root task that will track dependencies and re-execute when
     /// dependencies change. Task will eventually settle to the correct
     /// execution.
     /// Always active. Automatically scheduled.
-    </span>Root(Box&lt;<span class="kw">dyn </span>Fn() -&gt; Pin&lt;Box&lt;<span class="kw">dyn </span>Future&lt;Output = <span class="prelude-ty">Result</span>&lt;RawVc&gt;&gt; + Send&gt;&gt; + Send + Sync&gt;),
+    </span>Root(TransientTaskRoot),
 
     <span class="comment">// TODO implement these strongly consistency
     </span><span class="doccomment">/// A single root task execution. It won&#39;t track dependencies.
@@ -482,6 +461,14 @@
 }
 
 <span class="kw">impl </span>PersistentTaskType {
+    <span class="kw">pub fn </span>shrink_to_fit(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Native(<span class="kw">_</span>, inputs) =&gt; inputs.shrink_to_fit(),
+            <span class="self">Self</span>::ResolveNative(<span class="kw">_</span>, inputs) =&gt; inputs.shrink_to_fit(),
+            <span class="self">Self</span>::ResolveTrait(<span class="kw">_</span>, <span class="kw">_</span>, inputs) =&gt; inputs.shrink_to_fit(),
+        }
+    }
+
     <span class="kw">pub fn </span>len(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="kw">match </span><span class="self">self </span>{
             PersistentTaskType::Native(<span class="kw">_</span>, v)
@@ -511,27 +498,13 @@
     }
 }
 
-<span class="attr">#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-</span><span class="kw">pub struct </span>CellMappings {
-    <span class="comment">// TODO use [SerializableMagicAny]
-    </span><span class="kw">pub </span>by_key: HashMap&lt;(ValueTypeId, SharedValue), usize&gt;,
-    <span class="kw">pub </span>by_type: HashMap&lt;ValueTypeId, (usize, Vec&lt;usize&gt;)&gt;,
-}
-
-<span class="kw">impl </span>CellMappings {
-    <span class="kw">pub fn </span>reset(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
-        <span class="kw">for </span>list <span class="kw">in </span><span class="self">self</span>.by_type.values_mut() {
-            list.<span class="number">0 </span>= <span class="number">0</span>;
-        }
-    }
-}
-
 <span class="kw">pub struct </span>TaskExecutionSpec {
-    <span class="kw">pub </span>cell_mappings: <span class="prelude-ty">Option</span>&lt;CellMappings&gt;,
     <span class="kw">pub </span>future: Pin&lt;Box&lt;<span class="kw">dyn </span>Future&lt;Output = <span class="prelude-ty">Result</span>&lt;RawVc&gt;&gt; + Send&gt;&gt;,
 }
 
-<span class="attr">#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+<span class="comment">// TODO technically CellContent is already indexed by the ValueTypeId, so we
+// don&#39;t need to store it here
+</span><span class="attr">#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 </span><span class="kw">pub struct </span>CellContent(<span class="kw">pub </span><span class="prelude-ty">Option</span>&lt;SharedReference&gt;);
 
 <span class="kw">impl </span>Display <span class="kw">for </span>CellContent {
@@ -611,8 +584,8 @@
     <span class="kw">fn </span>task_execution_completed(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         task: TaskId,
-        cell_mappings: <span class="prelude-ty">Option</span>&lt;CellMappings&gt;,
         duration: Duration,
+        instant: Instant,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     ) -&gt; bool;
 
@@ -639,17 +612,10 @@
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Result</span>&lt;RawVc, EventListener&gt;&gt;;
 
-    <span class="kw">fn </span>track_read_task_output(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        task: TaskId,
-        reader: TaskId,
-        turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
-    );
-
     <span class="kw">fn </span>try_read_task_cell(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         task: TaskId,
-        index: usize,
+        index: CellId,
         reader: TaskId,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Result</span>&lt;CellContent, EventListener&gt;&gt;;
@@ -659,7 +625,7 @@
     </span><span class="kw">fn </span>try_read_task_cell_untracked(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         task: TaskId,
-        index: usize,
+        index: CellId,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Result</span>&lt;CellContent, EventListener&gt;&gt;;
 
@@ -668,7 +634,7 @@
     </span><span class="kw">fn </span>try_read_own_task_cell_untracked(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         current_task: TaskId,
-        index: usize,
+        index: CellId,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;CellContent&gt; {
         <span class="kw">match </span><span class="self">self</span>.try_read_task_cell_untracked(current_task, index, turbo_tasks)<span class="question-mark">? </span>{
@@ -677,21 +643,13 @@
         }
     }
 
-    <span class="kw">fn </span>track_read_task_cell(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        task: TaskId,
-        index: usize,
-        reader: TaskId,
-        turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
-    );
-
     <span class="kw">fn </span>try_read_task_collectibles(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         task: TaskId,
         trait_id: TraitTypeId,
         reader: TaskId,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Result</span>&lt;HashSet&lt;RawVc&gt;, EventListener&gt;&gt;;
+    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Result</span>&lt;AutoSet&lt;RawVc&gt;, EventListener&gt;&gt;;
 
     <span class="kw">fn </span>emit_collectible(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
@@ -709,12 +667,10 @@
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     );
 
-    <span class="kw">fn </span>get_fresh_cell(<span class="kw-2">&amp;</span><span class="self">self</span>, task: TaskId, turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi) -&gt; usize;
-
     <span class="kw">fn </span>update_task_cell(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         task: TaskId,
-        index: usize,
+        index: CellId,
         content: CellContent,
         turbo_tasks: <span class="kw-2">&amp;</span><span class="kw">dyn </span>TurboTasksBackendApi,
     );
