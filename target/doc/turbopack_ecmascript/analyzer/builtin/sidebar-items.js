@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":[["replace_builtin",""]]};
+window.SIDEBAR_ITEMS = {"fn":["early_replace_builtin","replace_builtin"]};
