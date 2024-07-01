@@ -11,7 +11,7 @@ use swc_core::{
     },
     quote, quote_expr,
 };
-use turbo_tasks::{debug::ValueDebugFormat, trace::TraceRawVcs, TryJoinIterExt, Value, Vc};
+use turbo_tasks::{debug::ValueDebugFormat, trace::TraceRawVcs, RcStr, TryJoinIterExt, Value, Vc};
 use turbopack_core::{
     chunk::{ChunkItemExt, ChunkableModule, ChunkingContext, ModuleId},
     issue::{code_gen::CodeGenerationIssue, IssueExt, IssueSeverity, StyledString},
@@ -49,7 +49,7 @@ pub(crate) enum SinglePatternMapping {
     /// ```
     ModuleLoader(ModuleId),
     /// External reference with request and type
-    External(String, ExternalType),
+    External(RcStr, ExternalType),
 }
 
 /// A mapping from a request pattern (e.g. "./module", `./images/${name}.png`)
@@ -118,7 +118,7 @@ impl SinglePatternMapping {
                 callee: Callee::Expr(quote_expr!("__turbopack_external_require__")),
                 args: vec![ExprOrSpread {
                     spread: None,
-                    expr: Box::new(Expr::Lit(Lit::Str(request.as_str().into()))),
+                    expr: request.as_str().into(),
                 }],
                 span: DUMMY_SP,
                 type_args: None,
@@ -320,14 +320,17 @@ async fn to_single_pattern_mapping(
             CodeGenerationIssue {
                 severity: IssueSeverity::Bug.into(),
                 title: StyledString::Text(
-                    "pattern mapping is not implemented for this result".to_string(),
+                    "pattern mapping is not implemented for this result".into(),
                 )
                 .cell(),
-                message: StyledString::Text(format!(
-                    "the reference resolves to a non-trivial result, which is not supported yet: \
-                     {:?}",
-                    resolve_item
-                ))
+                message: StyledString::Text(
+                    format!(
+                        "the reference resolves to a non-trivial result, which is not supported \
+                         yet: {:?}",
+                        resolve_item
+                    )
+                    .into(),
+                )
                 .cell(),
                 path: origin.origin_path(),
             }
@@ -354,9 +357,9 @@ async fn to_single_pattern_mapping(
     }
     CodeGenerationIssue {
         severity: IssueSeverity::Bug.into(),
-        title: StyledString::Text("non-ecmascript placeable asset".to_string()).cell(),
+        title: StyledString::Text("non-ecmascript placeable asset".into()).cell(),
         message: StyledString::Text(
-            "asset is not placeable in ESM chunks, so it doesn't have a module id".to_string(),
+            "asset is not placeable in ESM chunks, so it doesn't have a module id".into(),
         )
         .cell(),
         path: origin.origin_path(),

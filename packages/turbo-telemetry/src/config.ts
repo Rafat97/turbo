@@ -3,7 +3,7 @@ import { logger } from "@turbo/utils";
 import chalk from "chalk";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { defaultConfigPath, oneWayHashWithSalt } from "./utils";
+import utils from "./utils";
 
 const DEBUG_ENV_VAR = "TURBO_TELEMETRY_DEBUG";
 const DISABLED_ENV_VAR = "TURBO_TELEMETRY_DISABLED";
@@ -14,7 +14,7 @@ const ConfigSchema = z.object({
   telemetry_enabled: z.boolean(),
   telemetry_id: z.string(),
   telemetry_salt: z.string(),
-  telemetry_alerted: z.date().optional(),
+  telemetry_alerted: z.string().optional(),
 });
 
 type Config = z.infer<typeof ConfigSchema>;
@@ -51,7 +51,7 @@ export class TelemetryConfig {
 
   static async fromDefaultConfig(): Promise<TelemetryConfig | undefined> {
     try {
-      const configPath = await defaultConfigPath();
+      const configPath = await utils.defaultConfigPath();
       return TelemetryConfig.fromConfigPath(configPath);
     } catch (e) {
       return undefined;
@@ -73,7 +73,7 @@ export class TelemetryConfig {
   }): TelemetryConfig | undefined {
     const RawTelemetryId = uuidv4();
     const telemetrySalt = uuidv4();
-    const telemetryId = oneWayHashWithSalt({
+    const telemetryId = utils.oneWayHashWithSalt({
       input: RawTelemetryId,
       salt: telemetrySalt,
     });
@@ -188,13 +188,13 @@ export class TelemetryConfig {
       return true;
     }
 
-    this.config.telemetry_alerted = new Date();
+    this.config.telemetry_alerted = new Date().toISOString();
     this.tryWrite();
     return true;
   }
 
   oneWayHash(input: string): string {
-    return oneWayHashWithSalt({
+    return utils.oneWayHashWithSalt({
       input,
       salt: this.config.telemetry_salt,
     });

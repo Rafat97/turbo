@@ -1,8 +1,8 @@
 use std::{fmt::Display, io::Write};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use turbo_tasks::{trace::TraceRawVcs, TaskInput, Vc};
+use turbo_tasks::{trace::TraceRawVcs, RcStr, TaskInput, Vc};
 use turbo_tasks_fs::{glob::Glob, rope::RopeBuilder, FileContent, FileSystem, VirtualFileSystem};
 use turbopack_core::{
     asset::{Asset, AssetContent},
@@ -15,16 +15,16 @@ use turbopack_core::{
 use crate::{
     chunk::{
         EcmascriptChunkItem, EcmascriptChunkItemContent, EcmascriptChunkPlaceable,
-        EcmascriptChunkType, EcmascriptChunkingContext, EcmascriptExports,
+        EcmascriptChunkType, EcmascriptExports,
     },
     references::async_module::{AsyncModule, OptionAsyncModule},
     utils::StringifyJs,
-    EcmascriptModuleContent,
+    EcmascriptModuleContent, EcmascriptOptions,
 };
 
 #[turbo_tasks::function]
-fn layer() -> Vc<String> {
-    Vc::cell("external".to_string())
+fn layer() -> Vc<RcStr> {
+    Vc::cell("external".into())
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, TraceRawVcs, TaskInput)]
@@ -46,14 +46,14 @@ impl Display for CachedExternalType {
 
 #[turbo_tasks::value]
 pub struct CachedExternalModule {
-    pub request: String,
+    pub request: RcStr,
     pub external_type: CachedExternalType,
 }
 
 #[turbo_tasks::value_impl]
 impl CachedExternalModule {
     #[turbo_tasks::function]
-    pub fn new(request: String, external_type: CachedExternalType) -> Vc<Self> {
+    pub fn new(request: RcStr, external_type: CachedExternalType) -> Vc<Self> {
         Self::cell(CachedExternalModule {
             request,
             external_type,
@@ -83,7 +83,7 @@ impl CachedExternalModule {
         if self.external_type == CachedExternalType::CommonJs {
             writeln!(code, "module.exports = mod;")?;
         } else {
-            writeln!(code, "__turbopack_dynamic__(mod);")?;
+            writeln!(code, "__turbopack_export_namespace__(mod);")?;
         }
 
         Ok(EcmascriptModuleContent {
@@ -99,19 +99,20 @@ impl CachedExternalModule {
 impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     fn ident(&self) -> Vc<AssetIdent> {
-        let fs = VirtualFileSystem::new_with_name("externals".to_string());
+        let fs = VirtualFileSystem::new_with_name("externals".into());
 
         AssetIdent::from_path(fs.root())
             .with_layer(layer())
             .with_modifier(Vc::cell(self.request.clone()))
-            .with_modifier(Vc::cell(self.external_type.to_string()))
+            .with_modifier(Vc::cell(self.external_type.to_string().into()))
     }
 }
 
 #[turbo_tasks::value_impl]
 impl Asset for CachedExternalModule {
     #[turbo_tasks::function]
-    fn content(&self) -> Vc<AssetContent> {
+    fn content(self: Vc<Self>) -> Vc<AssetContent> {
+        // should be `NotFound` as this function gets called to detect source changes
         AssetContent::file(FileContent::NotFound.cell())
     }
 }
@@ -123,14 +124,6 @@ impl ChunkableModule for CachedExternalModule {
         self: Vc<Self>,
         chunking_context: Vc<Box<dyn ChunkingContext>>,
     ) -> Result<Vc<Box<dyn ChunkItem>>> {
-        let chunking_context =
-            Vc::try_resolve_downcast::<Box<dyn EcmascriptChunkingContext>>(chunking_context)
-                .await?
-                .context(
-                    "chunking context must impl EcmascriptChunkingContext to use \
-                     WebAssemblyModuleAsset",
-                )?;
-
         Ok(Vc::upcast(
             CachedExternalModuleChunkItem {
                 module: self,
@@ -181,7 +174,7 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
 #[turbo_tasks::value]
 pub struct CachedExternalModuleChunkItem {
     module: Vc<CachedExternalModule>,
-    chunking_context: Vc<Box<dyn EcmascriptChunkingContext>>,
+    chunking_context: Vc<Box<dyn ChunkingContext>>,
 }
 
 #[turbo_tasks::value_impl]
@@ -208,19 +201,21 @@ impl ChunkItem for CachedExternalModuleChunkItem {
 
     #[turbo_tasks::function]
     fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
-        Vc::upcast(self.chunking_context)
+        self.chunking_context
     }
 
     #[turbo_tasks::function]
-    fn is_self_async(&self) -> Vc<bool> {
-        Vc::cell(true)
+    async fn is_self_async(&self) -> Result<Vc<bool>> {
+        Ok(Vc::cell(
+            self.module.await?.external_type == CachedExternalType::EcmaScriptViaImport,
+        ))
     }
 }
 
 #[turbo_tasks::value_impl]
 impl EcmascriptChunkItem for CachedExternalModuleChunkItem {
     #[turbo_tasks::function]
-    fn chunking_context(&self) -> Vc<Box<dyn EcmascriptChunkingContext>> {
+    fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
         self.chunking_context
     }
 
@@ -242,6 +237,7 @@ impl EcmascriptChunkItem for CachedExternalModuleChunkItem {
         Ok(EcmascriptChunkItemContent::new(
             self.module.content(),
             self.chunking_context,
+            EcmascriptOptions::default().cell(),
             async_module_options,
         ))
     }

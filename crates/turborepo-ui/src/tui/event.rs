@@ -8,12 +8,16 @@ pub enum Event {
     },
     EndTask {
         task: String,
+        result: TaskResult,
     },
-    Stop,
+    Status {
+        task: String,
+        status: String,
+    },
+    Stop(std::sync::mpsc::SyncSender<()>),
+    // Stop initiated by the TUI itself
+    InternalStop,
     Tick,
-    Log {
-        message: Vec<u8>,
-    },
     Up,
     Down,
     ScrollUp,
@@ -27,6 +31,15 @@ pub enum Event {
     Input {
         bytes: Vec<u8>,
     },
+    UpdateTasks {
+        tasks: Vec<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum TaskResult {
+    Success,
+    Failure,
 }
 
 #[cfg(test)]
