@@ -17,8 +17,8 @@
 //! to `endpoint`: once an endpoint is set by a source, credentials from
 //! lower-priority sources are discarded. See `ExperimentalOtelOptions::merge`.
 
-// Match the lint settings from turborepo-cli
-#![allow(clippy::needless_lifetimes)]
+// Structured config errors are returned throughout configuration resolution;
+// Clippy reports 29 sites. Keep the shared diagnostic error type unchanged.
 #![allow(clippy::result_large_err)]
 
 mod env;
@@ -736,7 +736,7 @@ pub(crate) trait ResolvedConfigurationOptions {
 }
 
 // Used for global config and local config.
-impl<'a> ResolvedConfigurationOptions for &'a ConfigurationOptions {
+impl ResolvedConfigurationOptions for &ConfigurationOptions {
     fn get_configuration_options(
         &self,
         _existing_config: &ConfigurationOptions,

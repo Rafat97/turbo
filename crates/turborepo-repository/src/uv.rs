@@ -1332,6 +1332,10 @@ fn aggregate_task(
     ))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "tool tasks need their execution plan, target scope, and task contract"
+)]
 fn declared_tool_task(
     kind: UvPackageKind,
     task: &str,
@@ -1435,6 +1439,10 @@ fn warn_formatter_precedence(scope: &str, formatters: &[PythonTool], selected: P
 }
 
 /// Layer declared tools over the built-in uv fallback tasks.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "task generation combines workspace context, tool plans, and build settings"
+)]
 fn python_tasks_for_package(
     kind: UvPackageKind,
     package: &str,
@@ -2798,6 +2806,10 @@ fn static_source_dependencies(
         .any(|key| source.get(key).is_some())
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "discovered pyproject.toml manifests have a parent directory"
+)]
 fn static_package_dependencies(
     repo_root: &AbsoluteSystemPath,
 ) -> Result<Vec<crate::static_dependencies::StaticPackageDependencies>, Error> {
@@ -3042,6 +3054,10 @@ impl RepositoryContributor for UvContributor {
 /// Assemble Python packages, task contracts, and resolution/prune facts from
 /// observed workspace data. Discovery and toolchain process execution stay in
 /// `UvContributor`; tests can supply observations without invoking either.
+#[expect(
+    clippy::expect_used,
+    reason = "PYPROJECT_TOML is a validated static path"
+)]
 fn assemble_uv_contribution(
     repo_root: &AbsoluteSystemPath,
     workspace: DiscoveredWorkspace,
